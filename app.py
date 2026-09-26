@@ -551,9 +551,15 @@ st.markdown(
 )
 
 # 메타 정보 표시줄
+mkt_target_date = data_loader.get_latest_business_date(market=target_market)
+now_kst = datetime.datetime.now(data_loader.KST)
+today_kst_str = now_kst.strftime('%Y-%m-%d')
+is_mkt_open_today = data_loader.is_krx_trading_day(today_kst_str) if is_korean else data_loader.is_us_trading_day(today_kst_str)
+mkt_status_tag = "" if is_mkt_open_today else f" <span style='color: #fbbf24; font-size: 0.8rem;'>({'국내 증시' if is_korean else '미국 증시'} 오늘 휴장)</span>"
+
 st.markdown(
     f"<div style='text-align: center; font-size: 0.86rem; color: #94a3b8; margin-bottom: 12px;'>"
-    f"기준일: <span style='color: #38bdf8; font-weight: 600;'>{target_date}</span> (전일 종가 기준) &nbsp;|&nbsp; "
+    f"기준일: <span style='color: #38bdf8; font-weight: 600;'>{mkt_target_date}</span>{mkt_status_tag} (최신 종가 기준) &nbsp;|&nbsp; "
     f"선택 시장: <span style='color: #f8fafc; font-weight: 700;'>{active_market}</span> &nbsp;|&nbsp; "
     f"선택 배율: <span style='color: #fbbf24; font-weight: 700;'>{active_leverage}</span> &nbsp;|&nbsp; "
     f"통화 단위: <span style='color: #34d399; font-weight: 600;'>{'원화(KRW, ₩)' if is_korean else '달러(USD, $)'}</span> &nbsp;|&nbsp; "

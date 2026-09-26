@@ -40,7 +40,15 @@ except Exception:
 # ==========================================
 # 1. 영업일 및 기준일 유틸리티
 # ==========================================
-from data_loader import get_latest_business_date, get_krx_trading_days, is_krx_trading_day
+from data_loader import (
+    get_latest_business_date,
+    get_krx_trading_days,
+    is_krx_trading_day,
+    is_us_trading_day,
+    is_any_market_trading_day,
+    KRX_HOLIDAYS,
+    US_HOLIDAYS
+)
 
 
 # ==========================================
@@ -113,7 +121,7 @@ def build_kr_market_data(target_date: str = None):
     target_date: 영업일 기준일 (예: '2026-09-21'). 미지정 시 get_latest_business_date() 사용.
     """
     if not target_date:
-        target_date = get_latest_business_date()
+        target_date = get_latest_business_date(market='K Market')
 
     print(f"[K Market] 한국 ETF 전체 목록 조회 중 (네이버 금융 API, 기준일: {target_date})...")
     url = "https://finance.naver.com/api/sise/etfItemList.nhn"
@@ -131,7 +139,8 @@ def build_kr_market_data(target_date: str = None):
     # 그 외의 시간(평일 15:30~24:00, 평일 새벽 00:00~08:59, 주말 전체)은 장이 열리지 않은 마감 상태임!
     now_utc = datetime.datetime.now(datetime.timezone.utc)
     now_kst = now_utc + datetime.timedelta(hours=9)
-    is_kr_trading_hours = (now_kst.weekday() < 5) and (
+    today_kst_str = now_kst.strftime('%Y-%m-%d')
+    is_kr_trading_hours = is_krx_trading_day(today_kst_str) and (
         (now_kst.hour == 9 and now_kst.minute >= 0) or
         (9 < now_kst.hour < 15) or
         (now_kst.hour == 15 and now_kst.minute <= 30)
@@ -432,7 +441,7 @@ def build_us_market_data(target_date: str = None):
     yfinance 일괄 배치 다운로드를 통해 US Market 주요 ETF의 가격, 거래대금, 7대 기간 수익률 수집
     """
     if not target_date:
-        target_date = get_latest_business_date()
+        target_date = get_latest_business_date(market='US Market')
 
     tickers = [item[0] for item in US_ETF_UNIVERSE]
     meta_map = {item[0]: {'name': item[1], 'leverage': item[2]} for item in US_ETF_UNIVERSE}
@@ -455,14 +464,14 @@ def build_us_market_data(target_date: str = None):
         print("[US Market] Close 데이터를 파싱할 수 없습니다.")
         return pd.DataFrame()
 
-    # 미국 시장 거래시간 여부 판별 (미국 동부 EDT 기준 평일 09:30 ~ 16:00 정규장)
+    # 미국 시장 거래시간 여부 판별 (미국 동부 EDT 기준 평일 09:30 ~ 16:00 정규장, 공휴일 제외)
     now_utc = datetime.datetime.now(datetime.timezone.utc)
     now_edt = now_utc - datetime.timedelta(hours=4) # EDT: UTC-4
-    is_us_trading_hours = (now_edt.weekday() < 5) and (
+    today_edt_str = now_edt.strftime('%Y-%m-%d')
+    is_us_trading_hours = is_us_trading_day(today_edt_str) and (
         (now_edt.hour == 9 and now_edt.minute >= 30) or
         (10 <= now_edt.hour < 16)
     )
-    today_edt_str = now_edt.strftime('%Y-%m-%d')
 
     for ticker in tickers:
         if ticker not in close_df.columns:
@@ -524,13 +533,17 @@ def main():
     print("  한국 및 미국 증시 ETF 마스터 데이터 수집 엔진 시작")
     print("=" * 60)
 
-    target_date = get_latest_business_date()
+    target_date_kr = get_latest_business_date(market='K Market')
+    target_date_us = get_latest_business_date(market='US Market')
+    target_date = get_latest_business_date(market='ANY')
+
+    print(f"[*] 기준 영업일: 전체(ANY)={target_date}, 한국={target_date_kr}, 미국={target_date_us}")
 
     # 1. K Market 데이터 구축
-    df_kr = build_kr_market_data(target_date=target_date)
+    df_kr = build_kr_market_data(target_date=target_date_kr)
 
     # 2. US Market 데이터 구축
-    df_us = build_us_market_data(target_date=target_date)
+    df_us = build_us_market_data(target_date=target_date_us)
 
     # 3. 데이터 통합
     if df_kr.empty and df_us.empty:
@@ -556,6 +569,8 @@ def main():
 
     meta_info = {
         "target_date": target_date,
+        "kr_target_date": target_date_kr,
+        "us_target_date": target_date_us,
         "updated_at": datetime.datetime.now(KST).strftime('%Y-%m-%d %H:%M:%S'),
         "kr_count": len(df_kr),
         "us_count": len(df_us),
@@ -569,7 +584,7 @@ def main():
     print(f"   - 마스터 파일: {MASTER_FILE}")
     print(f"   - 오늘자 캐시: {cache_path}")
     print(f"   - 메타 파일: {meta_path}")
-    print(f"   - 기준일: {target_date}")
+    print(f"   - 기준일: 전체={target_date} (한국={target_date_kr}, 미국={target_date_us})")
     return True
 
 

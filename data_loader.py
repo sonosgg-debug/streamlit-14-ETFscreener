@@ -51,6 +51,31 @@ KRX_HOLIDAYS = {
     '20271011', '20271225', '20271231'
 }
 
+# 미국 증시(NYSE/NASDAQ) 정규 휴장일 (2024~2027)
+US_HOLIDAYS = {
+    # 2024
+    '20240101', '20240115', '20240219', '20240329', '20240527', '20240619', '20240704', '20240902', '20241128', '20241225',
+    # 2025
+    '20250101', '20250120', '20250217', '20250418', '20250526', '20250619', '20250704', '20250901', '20251127', '20251225',
+    # 2026
+    '20260101', '20260119', '20260216', '20260403', '20260525', '20260619', '20260703', '20260907', '20261126', '20261225',
+    # 2027
+    '20270101', '20270118', '20270215', '20270326', '20270531', '20270618', '20270705', '20270906', '20271125', '20271224'
+}
+
+def is_us_trading_day(date_val) -> bool:
+    """주어진 날짜가 미국 증시 정규 거래일인지 판별합니다."""
+    clean_date = str(date_val).replace('-', '').strip()
+    try:
+        dt = datetime.datetime.strptime(clean_date, "%Y%m%d")
+        return (dt.weekday() < 5) and (clean_date not in US_HOLIDAYS)
+    except Exception:
+        return False
+
+def is_any_market_trading_day(date_val) -> bool:
+    """한국거래소 또는 미국 증시 중 최소 한 곳이라도 정규 개장한 날인지 판별합니다."""
+    return is_krx_trading_day(date_val) or is_us_trading_day(date_val)
+
 _CACHED_TRADING_DAYS = None
 
 def get_krx_trading_days(count=120):
@@ -110,46 +135,68 @@ def is_krx_trading_day(date_str):
     except:
         return False
 
-def get_latest_business_date(target_date: str = None) -> str:
+def get_latest_business_date(target_date: str = None, market: str = 'ANY') -> str:
     """
+    시장 구분('K Market'/'KRX', 'US Market'/'US', 'ANY')에 맞춰
     가장 최근 거래 완료된 실제 영업일 YYYY-MM-DD 반환.
-    - target_date가 전달된 경우: 해당 날짜가 거래일이면 그대로, 휴장일이면 직전 실제 거래일로 자동 보정
-    - target_date가 없는 경우: KST 기준 16:00 이전이거나 오늘이 휴장일이면 최신 마감 거래일 반환
+    - target_date 지정 시: 해당 날짜 이하에서 해당 시장의 최신 거래일로 자동 보정
+    - target_date 미지정 시:
+        한국 시장: 16:00 KST 이후 당일 확정, 미도달/휴장 시 직전 영업일
+        미국 시장: 06:00 KST 이후 익일 확정, 미도달/휴장 시 직전 영업일
+        ANY: 양국 중 최소 한 곳 개장 마감일
     """
-    trading_days = get_krx_trading_days(120)
-    
-    if target_date:
-        clean_date = str(target_date).replace('-', '')
-        if clean_date in trading_days:
-            return f"{clean_date[:4]}-{clean_date[4:6]}-{clean_date[6:]}"
-        earlier = [d for d in trading_days if d <= clean_date]
-        if earlier:
-            d_res = earlier[-1]
-            return f"{d_res[:4]}-{d_res[4:6]}-{d_res[6:]}"
-        try:
-            dt = datetime.datetime.strptime(clean_date, "%Y%m%d")
-            while True:
-                d_str = dt.strftime("%Y%m%d")
-                if dt.weekday() < 5 and d_str not in KRX_HOLIDAYS:
-                    return f"{d_str[:4]}-{d_str[4:6]}-{d_str[6:]}"
-                dt -= datetime.timedelta(days=1)
-        except Exception:
-            return str(target_date)
-
     now_utc = datetime.datetime.now(datetime.timezone.utc)
     now_kst = now_utc + datetime.timedelta(hours=9)
-    today_str = now_kst.strftime('%Y%m%d')
+    today = now_kst.date()
 
-    if now_kst.hour >= 16 and today_str in trading_days:
-        return f"{today_str[:4]}-{today_str[4:6]}-{today_str[6:]}"
+    norm_m = 'KRX' if market in ['K Market', 'KRX', '한국'] else ('US' if market in ['US Market', 'US', '미국'] else 'ANY')
 
-    prior_days = [d for d in trading_days if d < today_str]
-    if prior_days:
-        d_res = prior_days[-1]
-        return f"{d_res[:4]}-{d_res[4:6]}-{d_res[6:]}"
+    if target_date:
+        if isinstance(target_date, str):
+            clean_date = target_date.replace('-', '').strip()
+            dt = datetime.datetime.strptime(clean_date, "%Y%m%d").date()
+        elif isinstance(target_date, datetime.date):
+            dt = target_date
+        else:
+            dt = today
+        for _ in range(60):
+            if norm_m == 'KRX' and is_krx_trading_day(dt):
+                return dt.strftime("%Y-%m-%d")
+            elif norm_m == 'US' and is_us_trading_day(dt):
+                return dt.strftime("%Y-%m-%d")
+            elif norm_m == 'ANY' and is_any_market_trading_day(dt):
+                return dt.strftime("%Y-%m-%d")
+            dt -= datetime.timedelta(days=1)
+        return today.strftime("%Y-%m-%d")
 
-    fallback_str = trading_days[-1] if trading_days else (now_kst - datetime.timedelta(days=1)).strftime('%Y%m%d')
-    return f"{fallback_str[:4]}-{fallback_str[4:6]}-{fallback_str[6:]}"
+    # 1. 한국 시장 당일 마감 확인
+    if norm_m in ['KRX', 'ANY']:
+        if now_kst.hour >= 16 and is_krx_trading_day(today):
+            return today.strftime("%Y-%m-%d")
+
+    # 2. 어제 및 그 이전 영업일 탐색
+    d = today - datetime.timedelta(days=1)
+    for _ in range(60):
+        if norm_m == 'US':
+            if is_us_trading_day(d):
+                if d == (today - datetime.timedelta(days=1)) and now_kst.hour < 6:
+                    d -= datetime.timedelta(days=1)
+                    continue
+                return d.strftime("%Y-%m-%d")
+        elif norm_m == 'KRX':
+            if is_krx_trading_day(d):
+                return d.strftime("%Y-%m-%d")
+        else: # 'ANY'
+            if is_us_trading_day(d):
+                if not (d == (today - datetime.timedelta(days=1)) and now_kst.hour < 6):
+                    return d.strftime("%Y-%m-%d")
+                elif is_krx_trading_day(d):
+                    return d.strftime("%Y-%m-%d")
+            elif is_krx_trading_day(d):
+                return d.strftime("%Y-%m-%d")
+        d -= datetime.timedelta(days=1)
+
+    return (today - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
 
 
 def is_cache_available(target_date: str = None) -> bool:
@@ -187,7 +234,7 @@ def cleanup_old_caches(keep_count: int = 5):
         print(f"[data_loader] 구형 캐시 정리 실패: {e}")
 
 
-def get_fallback_data_date() -> str:
+def get_fallback_data_date(market: str = 'ANY') -> str:
     """캐시 또는 마스터 메타 파일로부터 실제 데이터의 기준 날짜를 정확히 추정"""
     try:
         # 1. 메타 파일이 존재하면 저장된 기준일 우선 반환
@@ -195,6 +242,10 @@ def get_fallback_data_date() -> str:
             try:
                 with open(META_FILE, 'r', encoding='utf-8') as f:
                     meta = json.load(f)
+                    if market in ['K Market', 'KRX'] and meta.get("kr_target_date"):
+                        return meta["kr_target_date"]
+                    elif market in ['US Market', 'US'] and meta.get("us_target_date"):
+                        return meta["us_target_date"]
                     if meta.get("target_date"):
                         return meta["target_date"]
             except Exception:
@@ -303,6 +354,7 @@ def load_etf_history(ticker: str, market: str, months: int = 12):
     """
     days = int(months * 30.5 + 40)
     start_date = (datetime.datetime.now(KST) - datetime.timedelta(days=days)).strftime('%Y-%m-%d')
+    end_date = (datetime.datetime.now(KST) + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
     bm_ticker = "069500" if market == "K Market" else "SPY"
     bm_name = "코스피 200 (KODEX 200)" if market == "K Market" else "S&P 500 (SPY)"
 
@@ -317,9 +369,9 @@ def load_etf_history(ticker: str, market: str, months: int = 12):
             if df_hist is None or df_hist.empty:
                 # yfinance fallback
                 t_ks = f"{ticker}.KS"
-                df_hist = yf.download(t_ks, start=start_date, progress=False)
+                df_hist = yf.download(t_ks, start=start_date, end=end_date, progress=False)
         else:
-            df_hist = yf.download(ticker, start=start_date, progress=False)
+            df_hist = yf.download(ticker, start=start_date, end=end_date, progress=False)
             if isinstance(df_hist.columns, pd.MultiIndex):
                 df_hist = df_hist.xs(ticker, axis=1, level=1) if ticker in df_hist.columns.levels[1] else df_hist
     except Exception as e:
@@ -331,9 +383,9 @@ def load_etf_history(ticker: str, market: str, months: int = 12):
             if fdr is not None:
                 df_bm = fdr.DataReader(bm_ticker, start_date)
             if df_bm is None or df_bm.empty:
-                df_bm = yf.download(f"{bm_ticker}.KS", start=start_date, progress=False)
+                df_bm = yf.download(f"{bm_ticker}.KS", start=start_date, end=end_date, progress=False)
         else:
-            df_bm = yf.download(bm_ticker, start=start_date, progress=False)
+            df_bm = yf.download(bm_ticker, start=start_date, end=end_date, progress=False)
             if isinstance(df_bm.columns, pd.MultiIndex):
                 df_bm = df_bm.xs(bm_ticker, axis=1, level=1) if bm_ticker in df_bm.columns.levels[1] else df_bm
     except Exception as e:
