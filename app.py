@@ -23,7 +23,9 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+import importlib
 import data_loader
+importlib.reload(data_loader)
 
 STANDARD_CHART_THEME = {
     'paper_bgcolor': '#1E293B',    # Tailwind Slate-800 (외곽 카드 배경)
@@ -551,10 +553,20 @@ st.markdown(
 )
 
 # 메타 정보 표시줄
-mkt_target_date = data_loader.get_latest_business_date(market=target_market)
-now_kst = datetime.datetime.now(data_loader.KST)
+try:
+    mkt_target_date = data_loader.get_latest_business_date(market=target_market)
+except TypeError:
+    try:
+        mkt_target_date = data_loader.get_latest_business_date(target_market)
+    except Exception:
+        mkt_target_date = data_loader.get_latest_business_date()
+
+kst_tz = getattr(data_loader, 'KST', datetime.timezone(datetime.timedelta(hours=9)))
+now_kst = datetime.datetime.now(kst_tz)
 today_kst_str = now_kst.strftime('%Y-%m-%d')
-is_mkt_open_today = data_loader.is_krx_trading_day(today_kst_str) if is_korean else data_loader.is_us_trading_day(today_kst_str)
+is_krx_fn = getattr(data_loader, 'is_krx_trading_day', lambda d: True)
+is_us_fn = getattr(data_loader, 'is_us_trading_day', lambda d: True)
+is_mkt_open_today = is_krx_fn(today_kst_str) if is_korean else is_us_fn(today_kst_str)
 mkt_status_tag = "" if is_mkt_open_today else f" <span style='color: #fbbf24; font-size: 0.8rem;'>({'국내 증시' if is_korean else '미국 증시'} 오늘 휴장)</span>"
 
 st.markdown(

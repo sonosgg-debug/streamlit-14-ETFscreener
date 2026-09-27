@@ -97,8 +97,12 @@ def get_krx_trading_days(count=120):
             r = requests.get(url, headers=headers, timeout=3)
             if r.status_code == 200:
                 items = r.json()
-                if items:
-                    days.extend([item['localTradedAt'].replace('-', '') for item in items])
+                if items and isinstance(items, list):
+                    days.extend([
+                        item['localTradedAt'].replace('-', '')
+                        for item in items
+                        if isinstance(item, dict) and 'localTradedAt' in item
+                    ])
                 else:
                     break
         except Exception:
@@ -135,7 +139,7 @@ def is_krx_trading_day(date_str):
     except:
         return False
 
-def get_latest_business_date(target_date: str = None, market: str = 'ANY') -> str:
+def get_latest_business_date(target_date: str = None, market: str = 'ANY', **kwargs) -> str:
     """
     시장 구분('K Market'/'KRX', 'US Market'/'US', 'ANY')에 맞춰
     가장 최근 거래 완료된 실제 영업일 YYYY-MM-DD 반환.
@@ -144,7 +148,18 @@ def get_latest_business_date(target_date: str = None, market: str = 'ANY') -> st
         한국 시장: 16:00 KST 이후 당일 확정, 미도달/휴장 시 직전 영업일
         미국 시장: 06:00 KST 이후 익일 확정, 미도달/휴장 시 직전 영업일
         ANY: 양국 중 최소 한 곳 개장 마감일
+    - kwargs 및 위치 인자 유연성 지원
     """
+    if 'market' in kwargs:
+        market = kwargs['market']
+    if 'target_date' in kwargs:
+        target_date = kwargs['target_date']
+
+    # 첫 번째 위치 인자로 market 문자열('K Market', 'US Market', 'KRX' 등)이 넘어온 경우 자동 스왑
+    if target_date and any(m in str(target_date).upper() for m in ['K MARKET', 'US MARKET', 'KRX', 'US', 'ANY', '한국', '미국', 'KOREA', 'AMERICA']):
+        market = target_date
+        target_date = None
+
     now_utc = datetime.datetime.now(datetime.timezone.utc)
     now_kst = now_utc + datetime.timedelta(hours=9)
     today = now_kst.date()
