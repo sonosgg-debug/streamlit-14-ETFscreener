@@ -9,10 +9,6 @@ app.py
 - 종목별 상세 정보 및 4대 시각화 인터랙티브 차트 (이동평균, 구간수익률, 벤치마크 비교, MDD 리스크)
 """
 
-
-import socket
-socket.setdefaulttimeout(5.0)
-
 import sys
 import io
 import os
@@ -40,7 +36,6 @@ STANDARD_CHART_THEME = {
     'hover_bg': 'rgba(15, 23, 42, 0.9)',
     'hover_border': '#334155'
 }
-
 
 # ==========================================
 # 1. 페이지 기본 설정
@@ -312,14 +307,12 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-
 # ==========================================
 # 3. 데이터 로딩 캐시 함수
 # ==========================================
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_cached_etf_data(target_date_key: str, force_refresh: bool = False):
     return data_loader.load_etf_data(force_refresh=force_refresh)
-
 
 @st.cache_data(ttl=600, show_spinner=False)
 def get_cached_etf_history(ticker, market, months=12):
@@ -328,7 +321,6 @@ def get_cached_etf_history(ticker, market, months=12):
     except Exception as e:
         print(f"get_cached_etf_history 오류: {e}")
         return pd.DataFrame(), pd.DataFrame(), 0.0, {}
-
 
 # ==========================================
 # 4. 세션 상태 초기화
@@ -341,7 +333,6 @@ if 'selected_etf_name' not in st.session_state:
     st.session_state.selected_etf_name = None
 if 'force_reload' not in st.session_state:
     st.session_state.force_reload = False
-
 
 # ==========================================
 # 5. 왼쪽 사이드 패널 (사이드바)
@@ -474,7 +465,6 @@ with st.sidebar:
         st.session_state.selected_etf_name = None
         st.rerun()
 
-
 # ==========================================
 # 6. 데이터 로드 및 필터링
 # ==========================================
@@ -544,7 +534,6 @@ df_display_source = df_filtered.head(max_display_count).copy().reset_index(drop=
 # 순위 재부여 (1부터 100까지 명확히 표시)
 df_display_source["순위"] = list(range(1, len(df_display_source) + 1))
 
-
 # ==========================================
 # 7. 메인 타이틀 영역
 # ==========================================
@@ -601,7 +590,6 @@ if is_kr_3x_warning:
 
 st.markdown("<hr style='border: 0; height: 1px; background-color: #334155; margin: 8px 0 16px 0;'>", unsafe_allow_html=True)
 
-
 # ==========================================
 # 8. 핵심 요약 KPI 지표 카드 (4열)
 # ==========================================
@@ -637,7 +625,6 @@ with col_kpi3:
 with col_kpi4:
     with st.container(border=True):
         st.metric("🏆 1개월 최고 수익률 ETF", top_etf_str, help="조회된 목록 중 1개월 수익률 1위")
-
 
 # ==========================================
 # 9. 메인 영역: 조회 결과 데이터 테이블 (TOP 100)
@@ -716,12 +703,10 @@ if selection and selection.get("rows"):
         selected_from_table = df_table.iloc[sel_idx]["종목명"]
         st.session_state.selected_etf_name = selected_from_table
 
-
 # ==========================================
 # 10. 가로 구분선
 # ==========================================
 st.markdown("<hr style='border: 0; height: 1px; background-color: #334155; margin: 25px 0 20px 0;'>", unsafe_allow_html=True)
-
 
 # ==========================================
 # 11. 메인 영역: 선택한 종목의 상세 정보 및 시각화 차트
@@ -799,7 +784,6 @@ with st.container(border=True):
         st.metric("1년 수익률", ret_1y_str)
     with col_m6:
         st.metric("배율 / 최대낙폭(MDD)", f"{chosen_lev} ({mdd_val:.1f}%)", help=f"선택 기간 내 최고점 대비 최대 낙폭: {mdd_val:.2f}%")
-
 
 # ==========================================
 # 12. 4대 인터랙티브 시각화 차트 (2x2 Grid)
@@ -1059,7 +1043,6 @@ with col_ch4:
         ),
     )
     st.plotly_chart(fig4, use_container_width=True)
-
 
 # ==========================================
 # 13. 전문가 종합 ETF 투자 진단 카드
