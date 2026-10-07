@@ -6,6 +6,7 @@ data_loader.py
 
 import os
 import io
+import re
 import json
 import importlib
 import datetime
@@ -164,7 +165,7 @@ def get_latest_business_date(target_date: str = None, market: str = 'ANY', **kwa
     now_kst = now_utc + datetime.timedelta(hours=9)
     today = now_kst.date()
 
-    norm_m = 'KRX' if market in ['K Market', 'KRX', '한국'] else ('US' if market in ['US Market', 'US', '미국'] else 'ANY')
+    norm_m = 'KRX' if any(k in str(market) for k in ['K Market', 'KRX', '한국']) else ('US' if any(u in str(market) for u in ['US Market', 'US', '미국']) else 'ANY')
 
     if target_date:
         if isinstance(target_date, str):
@@ -257,9 +258,9 @@ def get_fallback_data_date(market: str = 'ANY') -> str:
             try:
                 with open(META_FILE, 'r', encoding='utf-8') as f:
                     meta = json.load(f)
-                    if market in ['K Market', 'KRX'] and meta.get("kr_target_date"):
+                    if any(k in str(market) for k in ['K Market', 'KRX', '한국']) and meta.get("kr_target_date"):
                         return meta["kr_target_date"]
-                    elif market in ['US Market', 'US'] and meta.get("us_target_date"):
+                    elif any(u in str(market) for u in ['US Market', 'US', '미국']) and meta.get("us_target_date"):
                         return meta["us_target_date"]
                     if meta.get("target_date"):
                         return meta["target_date"]
@@ -370,15 +371,16 @@ def load_etf_history(ticker: str, market: str, months: int = 12):
     days = int(months * 30.5 + 40)
     start_date = (datetime.datetime.now(KST) - datetime.timedelta(days=days)).strftime('%Y-%m-%d')
     end_date = (datetime.datetime.now(KST) + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
-    bm_ticker = "069500" if market == "K Market" else "SPY"
-    bm_name = "코스피 200 (KODEX 200)" if market == "K Market" else "S&P 500 (SPY)"
+    is_kr = any(k in str(market) for k in ['K Market', 'KRX', '한국'])
+    bm_ticker = "069500" if is_kr else "SPY"
+    bm_name = "코스피 200 (KODEX 200)" if is_kr else "S&P 500 (SPY)"
 
     df_hist = pd.DataFrame()
     df_bm = pd.DataFrame()
 
     # 1. 대상 ETF 주가 수집
     try:
-        if market == "K Market":
+        if is_kr:
             if fdr is not None:
                 df_hist = fdr.DataReader(ticker, start_date)
             if df_hist is None or df_hist.empty:
@@ -394,7 +396,7 @@ def load_etf_history(ticker: str, market: str, months: int = 12):
 
     # 2. 벤치마크 주가 수집
     try:
-        if market == "K Market":
+        if is_kr:
             if fdr is not None:
                 df_bm = fdr.DataReader(bm_ticker, start_date)
             if df_bm is None or df_bm.empty:
@@ -481,9 +483,13 @@ def create_excel_download(df_input: pd.DataFrame, market: str, leverage: str = "
     """
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = f"{market}_ETF_TOP100"
+    clean_market_name = re.sub(r'[\\/*?:\[\]]', '', str(market)).strip()
+    ws.title = f"{clean_market_name[:18]}_ETF_TOP100"
 
-    is_korean = (market == "K Market")
+    is_korean = any(k in str(market) for k in ["한국", "KRX", "K Market"])
+    if not is_korean and '시장' in df_input.columns and not df_input.empty:
+        first_mkt = str(df_input['시장'].iloc[0])
+        is_korean = any(k in first_mkt for k in ["한국", "KRX", "K Market"])
 
     # 1. 상단 타이틀 행 추가
     title_text = f"한국 및 미국 증시 ETF 수익률 비교 리포트 - [{market} | 배율: {leverage}]"
@@ -582,7 +588,7 @@ def create_excel_download(df_input: pd.DataFrame, market: str, leverage: str = "
                 cell.value = float(val)
                 cell.font = bold_font
                 cell.alignment = Alignment(horizontal="right", vertical="center")
-                cell.number_format = "#,##0원" if is_korean else "$#,##0.00"
+                cell.number_format = '#,##0" 원"' if is_korean else "$#,##0.00"
 
             elif col_name == "거래량":
                 cell.value = int(val)
@@ -594,7 +600,7 @@ def create_excel_download(df_input: pd.DataFrame, market: str, leverage: str = "
                 cell.value = float(val)
                 cell.font = bold_font
                 cell.alignment = Alignment(horizontal="right", vertical="center")
-                cell.number_format = "#,##0원" if is_korean else "$#,##0"
+                cell.number_format = '#,##0" 원"' if is_korean else "$#,##0"
 
             elif col_name in return_cols:
                 num_val = float(val)
