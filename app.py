@@ -638,7 +638,26 @@ with col_tbl_title:
 with col_dl:
     # 엑셀 다운로드 파일 생성
     excel_bytes = data_loader.create_excel_download(df_display_source, active_market, active_leverage)
-    file_name = f"ETF_TOP100_{active_market.replace(' ', '_')}_{active_leverage}_{target_date.replace('-', '')}.xlsx"
+    
+    market_code_map = {
+        "한국 시장 (KRX)": "KRX",
+        "미국 시장 (US)": "US",
+        "K Market": "KRX",
+        "US Market": "US",
+        "KRX": "KRX",
+        "US": "US"
+    }
+    raw_market = str(active_market).strip() if active_market else ""
+    market_code = market_code_map.get(raw_market)
+    if not market_code:
+        if "한국" in raw_market or "KRX" in raw_market.upper() or "K" in raw_market.upper():
+            market_code = "KRX"
+        elif "미국" in raw_market or "US" in raw_market.upper():
+            market_code = "US"
+        else:
+            market_code = "KRX"
+    clean_date = str(target_date).replace("-", "")
+    file_name = f"ETF_TOP100_{market_code}_{active_leverage}_{clean_date}.xlsx"
     st.download_button(
         label="📥 엑셀 파일 다운로드",
         data=excel_bytes,
