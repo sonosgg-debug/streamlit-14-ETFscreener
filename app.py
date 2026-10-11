@@ -10,18 +10,53 @@ app.py
 """
 
 import sys
-import io
-import os
-import datetime
+# Python 3.12+ 및 Streamlit Cloud 환경에서 pkg_resources 의존성 결함 방어용 Mock Shim
+try:
+    import pkg_resources
+except Exception:
+    try:
+        import setuptools.command
+        import pkg_resources
+    except Exception:
+        import types
+        pkg_mock = types.ModuleType("pkg_resources")
+        pkg_mock.resource_filename = lambda *args, **kwargs: ""
+        pkg_mock.resource_string = lambda *args, **kwargs: b""
+        pkg_mock.Requirement = type("Requirement", (), {"parse": lambda s: s})
+        pkg_mock.get_distribution = lambda *args, **kwargs: type("Dist", (), {"version": "1.0.0"})()
+        sys.modules["pkg_resources"] = pkg_mock
+
 import streamlit as st
+import os
+
+# ==========================================
+# 1. 페이지 기본 설정 (Streamlit 명령 최우선 실행 보장)
+# ==========================================
+FAVICON_PATH = os.path.join(os.path.dirname(__file__), "favicon.png")
+
+st.set_page_config(
+    page_title="한국 및 미국 증시 ETF 수익률 비교",
+    page_icon=FAVICON_PATH if os.path.exists(FAVICON_PATH) else None,
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+import io
+import datetime
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 import importlib
-import data_loader
-importlib.reload(data_loader)
+try:
+    import data_loader
+    importlib.reload(data_loader)
+except Exception as e:
+    import traceback
+    st.error(f"모듈 로드 중 오류가 발생했습니다: {e}")
+    st.code(traceback.format_exc())
+    st.stop()
 
 STANDARD_CHART_THEME = {
     'paper_bgcolor': '#1E293B',    # Tailwind Slate-800 (외곽 카드 배경)
@@ -36,18 +71,6 @@ STANDARD_CHART_THEME = {
     'hover_bg': 'rgba(15, 23, 42, 0.9)',
     'hover_border': '#334155'
 }
-
-# ==========================================
-# 1. 페이지 기본 설정
-# ==========================================
-FAVICON_PATH = os.path.join(os.path.dirname(__file__), "favicon.png")
-
-st.set_page_config(
-    page_title="한국 및 미국 증시 ETF 수익률 비교",
-    page_icon=FAVICON_PATH if os.path.exists(FAVICON_PATH) else None,
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
 
 # ==========================================
 # 2. 프리미엄 다크 테마 커스텀 CSS (39 DividendStock 일관 계승)
